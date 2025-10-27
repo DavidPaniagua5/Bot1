@@ -1,4 +1,3 @@
-
 %lex
 
 %%
@@ -15,6 +14,12 @@
 "nl"                    return 'nl';
 "for"                   return 'for';
 "function"              return 'function';
+
+"entero"                return 'tipo_entero';
+"decimal"               return 'tipo_decimal';
+"booleano"              return 'tipo_booleano';
+"caracter"              return 'tipo_caracter';
+"cadena"                return 'tipo_cadena';
 
 /* Operadores relacionales */
 "=="                    return 'igual';
@@ -47,8 +52,12 @@
 
 /* Literales */
 [0-9]+("."[0-9]+)?      return 'numero';
-\"([^\\\"]|\\.)*\"      return 'cadena';
-\'([^\\\']|\\.)*\'      return 'cadena';
+\"([^\\\"]|\\.)*\"      return 'cadena_literal';
+\'([^\\\']|\\.)*\'      return 'caracter_literal';
+
+/* Literales Booleanos (NUEVO) */
+"true"                  return 'booleano_literal';
+"false"                 return 'booleano_literal';
 
 /* Identificadores */
 [a-zA-Z_][a-zA-Z0-9_]*  return 'identificador';
@@ -58,25 +67,46 @@
 
 /* Caracteres no reconocidos */
 . {
-    if (!yy.listaErrores) yy.listaErrores = [];
-    yy.listaErrores.push(new ErrorL(
-        'Léxico',
-        "Carácter no reconocido '" + yytext + "'",
-        this.yylineno + 1,
-        this.yylloc ? this.yylloc.first_column + 1 : 0
-    ));
+    // Registrar el error pero NO detener el análisis
+    if (yy && yy.gestorErrores) {
+        yy.gestorErrores.agregarLexico(
+            "Carácter no reconocido: '" + yytext + "'",
+            yylineno + 1,
+            yylloc ? yylloc.first_column + 1 : 0
+        );
+    } else {
+        if (!yy.listaErrores) yy.listaErrores = [];
+        const ErrorL = require('../Errores/ErrorL');
+        yy.listaErrores.push(new ErrorL(
+            'Léxico',
+            "Carácter no reconocido: '" + yytext + "'",
+            yylineno + 1,
+            yylloc ? yylloc.first_column + 1 : 0
+        ));
+    }
 }
 
- /lex
+/lex
 
 
 %{
-const Nodo = require('../analizador_semantico/abstract/nodo');
-const ErrorL = require('../Errores/ErrorL');
-
-function inicializarErrores(yy) {
-    yy.listaErrores = [];
-}
+    const Nodo = require('../analizador_semantico/abstract/nodo');
+    const ErrorL = require('../Errores/ErrorL');
+    
+    function inicializarErrores(yy) {
+        if (!yy.listaErrores) {
+            yy.listaErrores = [];
+        }
+    }
+    
+    function registrarErrorSintactico(yy, mensaje, linea, columna) {
+        if (yy && yy.gestorErrores) {
+            yy.gestorErrores.agregarSintactico(mensaje, linea, columna);
+        } else {
+            if (!yy.listaErrores) yy.listaErrores = [];
+            yy.listaErrores.push(new ErrorL('Sintáctico', mensaje, linea, columna));
+        }
+    }
 %}
 
 
@@ -93,7 +123,6 @@ function inicializarErrores(yy) {
 
 %start INICIO
 
-
 %%
 
 INICIO
@@ -101,27 +130,28 @@ INICIO
         {
             inicializarErrores(yy);
             const nodoRaiz = new Nodo('PROGRAMA', null, $1, @1.first_line, @1.first_column);
-            yy.ast = nodoRaiz;        // guardamos el AST
+            yy.ast = nodoRaiz;
             yy.errores = yy.listaErrores || [];
-            return nodoRaiz;          // devolvemos solo el nodo raíz
-            if (nodo.tipo === "ERROR") {
-                console.warn(`Nodo de error ignorado en línea ${nodo.linea}, columna ${nodo.columna}`);
-                return;
-            }
-
+            return nodoRaiz;
         }
-        
     ;
 
 LISTA_SENTENCIAS
     : LISTA_SENTENCIAS SENTENCIA
-        { $1.push($2); $$ = $1; }
+        { 
+            // Filtrar nodos de error nulos
+            if ($2 !== null && $2 !== undefined) {
+                $1.push($2);
+            }
+            $$ = $1;
+        }
     | SENTENCIA
-        { $$ = [$1]; }
+        { $$ = ($1 !== null && $1 !== undefined) ? [$1] : []; }
     ;
 
 SENTENCIA
-    : SENTENCIA_IF              { $$ = $1; }
+    : SENTENCIA_DECLARACION     { $$ = $1; }
+    | SENTENCIA_IF              { $$ = $1; }
     | SENTENCIA_WHILE           { $$ = $1; }
     | SENTENCIA_ASIGNACION      { $$ = $1; }
     | SENTENCIA_IMPRIMIR        { $$ = $1; }
@@ -129,19 +159,42 @@ SENTENCIA
     | SENTENCIA_FUNCTION        { $$ = $1; }
     | SENTENCIA_LLAMADA         { $$ = $1; }
     | BLOQUE                    { $$ = $1; }
+    
+    /* RECUPERACIÓN DE ERRORES - Solo en punto y coma */
     | error punto_coma
-    {
-        if (!yy.listaErrores) yy.listaErrores = [];
-        yy.listaErrores.push(new ErrorL(
-            'Sintáctico',
-            'Error de sintaxis cerca de punto y coma',
-            @1.first_line,
-            @1.first_column
-        ));
-        $$ = new Nodo('ERROR', null, [], @1.first_line, @1.first_column);
-        yy.recovered = true;
+        {
+            registrarErrorSintactico(
+                yy,
+                'Error de sintaxis: sentencia inválida',
+                @1.first_line,
+                @1.first_column
+            );
+            $$ = null;
         }
+    ;
 
+TIPO
+    : tipo_entero    { $$ = { tipo: 'ENTERO', token: $1 }; }
+    | tipo_decimal   { $$ = { tipo: 'DECIMAL', token: $1 }; }
+    | tipo_booleano  { $$ = { tipo: 'BOOLEANO', token: $1 }; }
+    | tipo_caracter  { $$ = { tipo: 'CARACTER', token: $1 }; }
+    | tipo_cadena    { $$ = { tipo: 'CADENA', token: $1 }; }
+    ;
+
+SENTENCIA_DECLARACION
+    : TIPO identificador asignacion EXPRESION punto_coma
+        {
+            $$ = new Nodo('DECLARACION_ASIGNACION', $1.tipo, [
+                new Nodo('IDENTIFICADOR', $2, [], @2.first_line, @2.first_column),
+                $4
+            ], @1.first_line, @1.first_column);
+        }
+    | TIPO identificador punto_coma
+        {
+            $$ = new Nodo('DECLARACION', $1.tipo, [
+                new Nodo('IDENTIFICADOR', $2, [], @2.first_line, @2.first_column),
+            ], @1.first_line, @1.first_column);
+        }
     ;
 
 SENTENCIA_IF
@@ -164,6 +217,21 @@ SENTENCIA_ASIGNACION
                 $3
             ], @1.first_line, @1.first_column);
         }
+    
+    /* RECUPERACIÓN en ASIGNACIÓN - expresión inválida */
+    | identificador asignacion error punto_coma
+        {
+            registrarErrorSintactico(
+                yy,
+                'Error en expresión de asignación',
+                @3.first_line,
+                @3.first_column
+            );
+            $$ = new Nodo('ASIGNACION', null, [
+                new Nodo('IDENTIFICADOR', $1, [], @1.first_line, @1.first_column),
+                new Nodo('NUMERO', 0, [], @3.first_line, @3.first_column)
+            ], @1.first_line, @1.first_column);
+        }
     ;
 
 SENTENCIA_IMPRIMIR
@@ -171,8 +239,33 @@ SENTENCIA_IMPRIMIR
         { $$ = new Nodo('IMPRIMIR', { salto: false }, $2, @1.first_line, @1.first_column); }
     | imprimir nl LISTA_EXPRESIONES punto_coma
         { $$ = new Nodo('IMPRIMIR', { salto: true }, $3, @1.first_line, @1.first_column); }
+    
+    /* RECUPERACIÓN en IMPRIMIR */
+    | imprimir error punto_coma
+        {
+            registrarErrorSintactico(
+                yy,
+                'Error en sentencia imprimir',
+                @2.first_line,
+                @2.first_column
+            );
+            $$ = new Nodo('IMPRIMIR', { salto: false }, [
+                new Nodo('CADENA', 'ERROR', [], @2.first_line, @2.first_column)
+            ], @1.first_line, @1.first_column);
+        }
+    | imprimir nl error punto_coma
+        {
+            registrarErrorSintactico(
+                yy,
+                'Error en sentencia imprimir nl',
+                @3.first_line,
+                @3.first_column
+            );
+            $$ = new Nodo('IMPRIMIR', { salto: true }, [
+                new Nodo('CADENA', 'ERROR', [], @3.first_line, @3.first_column)
+            ], @1.first_line, @1.first_column);
+        }
     ;
-
 
 BLOQUE
     : llave_izq LISTA_SENTENCIAS llave_der
@@ -240,23 +333,29 @@ TERMINO
     ;
 
 FACTOR
-    : menos FACTOR %prec UMENOS
-        { $$ = new Nodo('MENOS_UNARIO', null, [$2], @1.first_line, @1.first_column); }
-    | not FACTOR
-        { $$ = new Nodo('NOT', null, [$2], @1.first_line, @1.first_column); }
-    | paren_izq EXPRESION paren_der
-        { $$ = $2; }
-    | numero
-        { $$ = new Nodo('NUMERO', Number($1), [], @1.first_line, @1.first_column); }
-    | cadena
-        { $$ = new Nodo('CADENA', $1.substring(1, $1.length - 1), [], @1.first_line, @1.first_column); }
-    | identificador
-        { $$ = new Nodo('IDENTIFICADOR', $1, [], @1.first_line, @1.first_column); }
-    ;
+    : menos FACTOR %prec UMENOS
+        { $$ = new Nodo('MENOS_UNARIO', null, [$2], @1.first_line, @1.first_column); }
+    | not FACTOR
+        { $$ = new Nodo('NOT', null, [$2], @1.first_line, @1.first_column); }
+    | paren_izq EXPRESION paren_der
+        { $$ = $2; }
+    | numero
+        { $$ = new Nodo('NUMERO', Number($1), [], @1.first_line, @1.first_column); }
+    | cadena_literal //
+        { $$ = new Nodo('CADENA_LITERAL', $1.substring(1, $1.length - 1), [], @1.first_line, @1.first_column); }
+    | caracter_literal //
+        { $$ = new Nodo('CARACTER_LITERAL', $1.substring(1, $1.length - 1), [], @1.first_line, @1.first_column); }
+    | booleano_literal //
+        { $$ = new Nodo('BOOLEANO_LITERAL', $1 === 'true', [], @1.first_line, @1.first_column); }
+    | identificador
+        { $$ = new Nodo('IDENTIFICADOR', $1, [], @1.first_line, @1.first_column); }
+    ;
 
 SENTENCIA_FOR
     : for paren_izq OPT_INICIAL punto_coma OPT_CONDICION punto_coma OPT_INCREMENTO paren_der SENTENCIA
-        { $$ = new Nodo('FOR', null, [$3, $5, $7, $9], @1.first_line, @1.first_column); }
+        { 
+            $$ = new Nodo('FOR', null, [$3, $5, $7, $9], @1.first_line, @1.first_column); 
+        }
     ;
 
 OPT_INICIAL

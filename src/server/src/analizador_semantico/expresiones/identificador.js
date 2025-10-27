@@ -1,21 +1,37 @@
+// src/analizador_semantico/expresiones/Identificador.js
+
 const Expresion = require('../abstract/expresion');
+const TIPO_DATO = require('../simbolo/TipoDato'); 
 
 class Identificador extends Expresion {
-    constructor(nombre, acceso, linea, columna) {
+    /**
+     * @param {string} id - El nombre del identificador.
+     * @param {boolean} acceso - true si se usa como valor (derecha); false si se usa para asignación (izquierda).
+     */
+    constructor(id, acceso = true, linea, columna) {
         super(linea, columna);
-        this.nombre = nombre;
+        this.id = id;
         this.acceso = acceso;
     }
 
     ejecutar(entorno) {
-        if (this.acceso) {
-            return entorno.obtener(this.nombre)
+        // Caso 1: Se usa en el lado IZQUIERDO de una asignación (Asignacion.js llama a ejecutar).
+        // Debe retornar el nombre (string) para que Asignacion.js pueda buscarlo.
+        if (!this.acceso) { 
+            return this.id; 
         }
-        return this.nombre;
-    }
 
-    toString() {
-        return `Identificador(${this.nombre})`;
+        // Caso 2: Se usa en el lado DERECHO o como una expresión (accediendo a su valor).
+        // Debe obtener el símbolo completo para retornar su valor y tipo.
+        
+        // Asumiendo que entorno.obtenerSimbolo(id) retorna el objeto Simbolo
+        const simbolo = entorno.obtenerSimbolo(this.id);
+        
+        // Retorna el resultado completo: { valor, tipo }
+        return {
+            valor: simbolo.valor,
+            tipo: simbolo.tipo,
+        };
     }
 }
 
