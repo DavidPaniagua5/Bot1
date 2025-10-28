@@ -21,11 +21,7 @@ class Identificador extends Expresion {
             return this.id; 
         }
 
-        // Caso 2: Se usa en el lado DERECHO o como una expresión (accediendo a su valor).
-        // Debe obtener el símbolo completo para retornar su valor y tipo.
-        
-        // Asumiendo que entorno.obtenerSimbolo(id) retorna el objeto Simbolo
-        const simbolo = entorno.obtenerSimbolo(this.id);
+        const simbolo = entorno.obtener(this.id);
         
         // Retorna el resultado completo: { valor, tipo }
         return {

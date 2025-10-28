@@ -7,7 +7,7 @@ const TIPO_DATO = require('../simbolo/TipoDato');
 class Declaracion extends Instruccion {
     constructor(tipo, identificador, expresion, linea, columna) {
         super(linea, columna);
-        this.tipo = tipo;               
+        this.tipo = tipo.toUpperCase();               
         this.identificador = identificador; 
         this.expresion = expresion;     
     }

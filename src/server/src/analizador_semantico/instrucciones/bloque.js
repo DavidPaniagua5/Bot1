@@ -14,6 +14,7 @@ class Bloque extends Instruccion {
             let resultado = null;
             
             for (const sentencia of this.sentencias) {
+                
                 resultado = sentencia.ejecutar(entornoBloque);
             }
             

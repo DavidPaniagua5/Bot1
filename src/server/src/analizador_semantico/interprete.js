@@ -1,58 +1,59 @@
-    const Entorno = require('./entorno');
-    /**
-     * Clase principal del intérprete que ejecuta el AST
-     */
-    class Interprete {
-        constructor() {
-            this.entornoGlobal = new Entorno();
-            this.salida = [];
-            this.errores = [];
-        }
+// src/analizador_semantico/interprete.js
+const Entorno = require('./entorno');
 
-        interpretar(programa) {
-            try {
-                this.salida = [];
-                this.errores = [];
-                
-                console.log('=== INICIANDO INTERPRETACIÓN ===');
-                
-                // Ejecutar directamente la instancia del programa
-                const resultado = programa.ejecutar ? programa.ejecutar(this.entornoGlobal) : null;
-                this.salida = this.entornoGlobal.salida;
-
-                console.log('Resultado de la ejecución:', resultado);
-                console.log('Salida capturada:', this.salida);
-                console.log('=== FIN INTERPRETACIÓN ===');
-                
-                // Se retorna de esta manera ya que el frontend espera este formato
-                return {
-                    exito: true,
-                    resultado: resultado,
-                    salida: this.salida,
-                    variables: this.entornoGlobal.getVariables(),
-                    errores: []
-                };
-            } catch (error) {
-                console.error('Error durante la interpretación:', error);
-                this.errores.push(error.message);
-                return {
-                    exito: false,
-                    resultado: null,
-                    salida: this.salida,
-                    variables: this.entornoGlobal.getVariables(),
-                    errores: this.errores
-                };
-            }
-        }
-
-        /**
-         * Reinicia el intérprete limpiando el entorno y los resultados
-         */
-        reiniciar() {
-            this.entornoGlobal = new Entorno();
-            this.salida = [];
-            this.errores = [];
-        }
+class Interprete {
+    constructor(gestorErrores) {
+        this.gestorErrores = gestorErrores;
+        this.entornoGlobal = new Entorno();
     }
 
-    module.exports = Interprete;
+    interpretar(programa) {
+        try {
+            console.log('=== INICIANDO INTERPRETACIÓN ===');
+
+            if (programa && programa.hijos) {
+                for (const instruccion of programa.hijos) {
+                    try {
+                        instruccion.ejecutar(this.entornoGlobal);
+                    } catch (error) {
+                        this.gestorErrores.agregarSemantico(
+                            error.message,
+                            instruccion.linea || 0,
+                            instruccion.columna || 0
+                        );
+                    }
+                }
+            }
+
+            // ASIGNAR AL FINAL
+            const salidaFinal = this.entornoGlobal.salida;
+            const variablesFinales = this.entornoGlobal.getVariables();
+
+            console.log('Salida capturada:', salidaFinal);
+            console.log('Variables:', variablesFinales);
+
+            return {
+                exito: !this.gestorErrores.hayErrores(),
+                resultado: null,
+                salida: salidaFinal,
+                variables: variablesFinales,
+                errores: this.gestorErrores.generarReporte()
+            };
+
+        } catch (error) {
+            const salidaFinal = this.entornoGlobal.salida;
+            const variablesFinales = this.entornoGlobal.getVariables();
+
+            this.gestorErrores.agregarSemantico(error.message, 0, 0);
+            return {
+                exito: false,
+                resultado: null,
+                salida: salidaFinal,
+                variables: variablesFinales,
+                errores: this.gestorErrores.generarReporte()
+            };
+        }
+    }
+}
+
+module.exports = Interprete;

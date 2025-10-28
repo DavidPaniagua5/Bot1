@@ -2,51 +2,40 @@ class Entorno {
     constructor(entornoAnterior = null) {
         this.variables = new Map();
         this.entornoAnterior = entornoAnterior;
-        this.salida = []; // Se inicializa en el entorno global y se comparte implícitamente
+        this.salida = [];
         this.funciones = new Map();
     }
 
-    definir(nombre, simbolo) { // Acepta el ID y el objeto Simbolo
-            if (this.variables.has(nombre)) {
-                throw new Error(`Error Semántico: La variable '${nombre}' ya ha sido declarada en este ámbito.`);
-            }
-            this.variables.set(nombre, simbolo);
-        }
-    asignar(nombre, nuevoResultado) {
-    let entornoActual = this;
-    while (entornoActual !== null) {
-        if (entornoActual.variables.has(nombre)) {
-            const simbolo = entornoActual.variables.get(nombre);
+    definir(nombre, valor) {
+        this.variables.set(nombre, valor);
+    }
 
-            if (simbolo.tipo !== nuevoResultado.tipo) {
-                throw new Error(`Error Semántico: No se puede asignar un valor tipo ${nuevoResultado.tipo} a la variable '${nombre}' tipo ${simbolo.tipo}.`);
-            }
-
-            simbolo.valor = nuevoResultado.valor;
+    // Asigna un valor a una variable existente
+    asignar(nombre, valor) {
+        if (this.variables.has(nombre)) {
+            this.variables.set(nombre, valor);
             return;
         }
-        entornoActual = entornoActual.entornoAnterior;
+
+        if (this.entornoAnterior !== null) {
+            this.entornoAnterior.asignar(nombre, valor);
+            return;
+        }
+
+        throw new Error(`Variable '${nombre}' no declarada`);
     }
 
-    throw new Error(`Variable '${nombre}' no declarada`);
-}
-
-    // Obtiene el objeto Simbolo completo
-obtenerSimbolo(nombre) { 
-    if (this.variables.has(nombre)) {
-        return this.variables.get(nombre);
-    }
-
-    if (this.entornoAnterior !== null) {
-        return this.entornoAnterior.obtenerSimbolo(nombre);
-    }
-
-    throw new Error(`Variable '${nombre}' no declarada`);
-}
-
+    // Obtiene el valor de una variable
     obtener(nombre) {
-        const simbolo = this.obtenerSimbolo(nombre);
-        return simbolo.valor;
+        if (this.variables.has(nombre)) {
+            return this.variables.get(nombre);
+        }
+
+        if (this.entornoAnterior !== null) {
+            return this.entornoAnterior.obtener(nombre);
+        }
+
+        throw new Error(`Variable '${nombre}' no declarada`);
     }
 
     // Verifica si una variable existe en el entorno actual o en alguno anterior
@@ -63,7 +52,23 @@ obtenerSimbolo(nombre) {
     }
 
     getVariables() {
-        return new Map(this.variables);
+        const todas = new Map();
+        let actual = this;
+        while (actual !== null) {
+            for (const [nombre, simbolo] of actual.variables) {
+                if (!todas.has(nombre)) {
+                    todas.set(nombre, {
+                        id: simbolo.id,
+                        tipo: simbolo.tipo,
+                        valor: simbolo.valor,
+                        linea: simbolo.linea,
+                        columna: simbolo.columna
+                    });
+                }
+            }
+            actual = actual.entornoAnterior;
+        }
+        return todas;
     }
 
     crearEntornoHijo() {
@@ -72,16 +77,14 @@ obtenerSimbolo(nombre) {
     }
 
     // Esto busca el entorno global y agrega la salida ahí
-agregarSalida(texto) {
-        // Si NO tengo un entorno anterior, soy el Entorno Global.
-        if (this.entornoAnterior === null) { 
-            this.salida.push(texto);
-            return;
+    agregarSalida(texto) {
+        let global = this;
+        while (global.entornoAnterior !== null) {
+            global = global.entornoAnterior;
         }
-        
-        // Si tengo un padre, delego la tarea hacia arriba.
-        this.entornoAnterior.agregarSalida(texto);
+        global.salida.push(texto);
     }
+
     definirFuncion( nombre, funcionInstancia )
     {
         this.funciones.set( nombre, funcionInstancia );

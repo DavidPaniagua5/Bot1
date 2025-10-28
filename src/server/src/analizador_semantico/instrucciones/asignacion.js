@@ -1,5 +1,3 @@
-// src/analizador_semantico/instrucciones/Asignacion.js
-
 const Instruccion = require('../abstract/instruccion');
 
 class Asignacion extends Instruccion {
@@ -19,7 +17,7 @@ class Asignacion extends Instruccion {
 
             // 3. Obtener el Símbolo existente (Busca en el entorno)
             // Asume que entorno.obtenerSimbolo(id) existe y lanza error si no lo encuentra.
-            const simbolo = entorno.obtenerSimbolo(id);
+            const simbolo = entorno.obtener(id);
 
             // 4. Verificar Tipado Estático
             if (simbolo.tipo !== nuevoResultado.tipo) {
